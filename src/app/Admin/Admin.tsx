@@ -6,6 +6,7 @@ import {
   Pressable,
   FlatList,
   Alert,
+  Modal,
 } from "react-native";
 import tw from "twrnc";
 import * as ImagePicker from "expo-image-picker";
@@ -25,6 +26,8 @@ import { useMedia, ICarouselMedia } from "@/hooks/use-midia";
 import { StackRoutesProps } from "@/routes/StackRoutes";
 
 export function Admin({ navigation }: StackRoutesProps<"admin">) {
+  const endPointPost =
+    "https://nasago.bubbleapps.io/api/1.1/wf/get_publicities_totem";
   const [LoadingDownload, setLoadingDownload] = useState(false);
 
   // Hook de mídia
@@ -34,6 +37,7 @@ export function Admin({ navigation }: StackRoutesProps<"admin">) {
     removeMedia,
     handleLoadingDatas,
     saveCarouselMedia,
+    clearAllMedia,
   } = useMedia();
 
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -46,6 +50,10 @@ export function Admin({ navigation }: StackRoutesProps<"admin">) {
 
   // Estado para controlar qual item está sendo editado
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
+
+  // Estados para o modal de código do totem
+  const [totemModalVisible, setTotemModalVisible] = useState(false);
+  const [totemCode, setTotemCode] = useState("");
 
   // ==================== FUNÇÕES DE MÍDIA ====================
 
@@ -208,7 +216,7 @@ export function Admin({ navigation }: StackRoutesProps<"admin">) {
         uri: localUri,
         type: mediaType,
         fileName: fileName,
-        customName: `Nova ${mediaType === "video" ? "Vídeo" : "Imagem"}`, // Nome padrão amigável
+        customName: `Nova ${mediaType === "video" ? "Vídeo" : "Imagem"}`,
         createdAt: new Date().toISOString(),
         duration: mediaType === "image" ? 7 : undefined,
       };
@@ -244,6 +252,231 @@ export function Admin({ navigation }: StackRoutesProps<"admin">) {
         },
       },
     ]);
+  };
+
+  // ==================== DOWNLOAD DE PUBLICIDADES DA API ====================
+
+  // Abrir modal para digitar código do totem
+  const openTotemModal = () => {
+    setTotemCode("");
+    setTotemModalVisible(true);
+  };
+
+  // Confirmar e iniciar download
+  const confirmDownload = () => {
+    if (!totemCode.trim()) {
+      Alert.alert("Erro", "Por favor, digite o código do totem");
+      return;
+    }
+    setTotemModalVisible(false);
+    downloadPublicities(totemCode.trim());
+  };
+
+  const downloadPublicities = async (codTotem: string) => {
+    setLoadingDownload(true);
+    try {
+      console.log("🔄 Iniciando download de publicidades...");
+      console.log("📋 Código do totem:", codTotem);
+
+      // 1. Fazer requisição POST para a API
+      const response = await fetch(endPointPost, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          codTotem: codTotem,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro na API: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("📦 Dados recebidos:", data);
+
+      if (data.status !== "success" || !data.response?.publicities) {
+        throw new Error("Formato de resposta inválido");
+      }
+
+      const publicities = data.response.publicities;
+
+      if (publicities.length === 0) {
+        Alert.alert("Aviso", "Nenhuma publicidade encontrada para este código");
+        return;
+      }
+
+      // 2. Baixar e salvar cada imagem/vídeo localmente
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const publicity of publicities) {
+        try {
+          // Verificar se está ativo
+          if (!publicity.ativo) {
+            console.log(`⏭️ Pulando "${publicity.nome_referencia}" (inativo)`);
+            continue;
+          }
+
+          // ✅ CORREÇÃO: Determinar tipo de arquivo e pegar URL correta
+          const isVideo = publicity.tipo_arquivo === "video";
+
+          // 🎯 Pegar URL do campo correto baseado no tipo
+          let fileUrl = isVideo ? publicity.publi_video : publicity.publi_image;
+
+          // Validar se a URL existe
+          if (!fileUrl) {
+            console.log(
+              `⚠️ URL não encontrada para "${publicity.nome_referencia}"`
+            );
+            errorCount++;
+            continue;
+          }
+
+          // Se a URL começar com //, adicionar https:
+          if (fileUrl.startsWith("//")) {
+            fileUrl = `https:${fileUrl}`;
+          }
+
+          console.log(
+            `⬇️ Baixando ${isVideo ? "🎥 VIDEO" : "🖼️ IMAGEM"}: ${publicity.nome_referencia}`
+          );
+          console.log(`📎 URL: ${fileUrl}`);
+
+          // Determinar extensão do arquivo
+          const fileExtension =
+            fileUrl.split(".").pop()?.split("?")[0] ||
+            (isVideo ? "mp4" : "jpg");
+
+          // Criar nome de arquivo local único
+          const localFileName = `publicity_${publicity._id}.${fileExtension}`;
+          const localUri = `${FileSystem.documentDirectory}${localFileName}`;
+
+          // Verificar se arquivo já existe localmente
+          const fileInfo = await FileSystem.getInfoAsync(localUri);
+
+          if (fileInfo.exists) {
+            console.log(`✅ Arquivo já existe: ${localFileName}`);
+          } else {
+            // Baixar arquivo da internet
+            console.log(`📥 Baixando de: ${fileUrl}`);
+
+            const downloadResult = await FileSystem.downloadAsync(
+              fileUrl,
+              localUri
+            );
+
+            if (downloadResult.status !== 200) {
+              throw new Error(
+                `Erro ao baixar: status ${downloadResult.status}`
+              );
+            }
+
+            console.log(`✅ Arquivo baixado: ${localFileName}`);
+          }
+
+          // 3. Criar objeto de mídia para o carrossel
+          const newMedia: any = {
+            id: publicity._id,
+            uri: localUri,
+            type: isVideo ? "video" : "image",
+            fileName: localFileName,
+            customName: publicity.nome_referencia || "Sem nome",
+            createdAt: new Date(publicity["Created Date"]).toISOString(),
+            duration: isVideo ? undefined : 7, // ✅ Vídeos não tem duração customizada
+            order: publicity.order || 0,
+            apiData: {
+              original_url: fileUrl, // ✅ Salvando URL correta
+              created_by: publicity["Created By"],
+              modified_date: publicity["Modified Date"],
+              tipo_arquivo: publicity.tipo_arquivo,
+            },
+          };
+
+          // Verificar se mídia já existe (evitar duplicatas)
+          const existingMedia = carouselMedia.find((m) => m.id === newMedia.id);
+
+          if (!existingMedia) {
+            await addMedia(newMedia);
+            console.log(
+              `➕ Mídia adicionada: ${newMedia.customName} (${newMedia.type})`
+            );
+          } else {
+            console.log(`⏭️ Mídia já existe: ${newMedia.customName}`);
+          }
+
+          successCount++;
+        } catch (error) {
+          console.error(
+            `❌ Erro ao processar "${publicity.nome_referencia}":`,
+            error
+          );
+          errorCount++;
+        }
+      }
+
+      // 4. Recarregar mídias
+      await handleLoadingDatas();
+
+      // 5. Mostrar resultado detalhado
+      const videoCount = carouselMedia.filter((m) => m.type === "video").length;
+      const imageCount = carouselMedia.filter((m) => m.type === "image").length;
+
+      if (successCount > 0) {
+        Alert.alert(
+          "Download concluído!",
+          `✅ ${successCount} mídia(s) processada(s) com sucesso!\n\n` +
+            `🖼️ Imagens: ${imageCount}\n` +
+            `🎥 Vídeos: ${videoCount}\n` +
+            `${errorCount > 0 ? `\n⚠️ ${errorCount} erro(s) encontrado(s)` : ""}`
+        );
+      } else {
+        Alert.alert(
+          "Nenhuma mídia nova",
+          "Todas as mídias já estão baixadas ou estão inativas."
+        );
+      }
+    } catch (error) {
+      console.error("❌ Erro ao baixar publicidades:", error);
+      Alert.alert(
+        "Erro",
+        `Não foi possível baixar as publicidades.\n\n${
+          error instanceof Error ? error.message : "Erro desconhecido"
+        }`
+      );
+    } finally {
+      setLoadingDownload(false);
+    }
+  };
+
+  // ==================== LIMPAR TODAS AS PUBLICIDADES ====================
+
+  const handleClearAllPublicities = () => {
+    Alert.alert(
+      "⚠️ Confirmar exclusão",
+      "Deseja realmente remover TODAS as mídias do carrossel?\n\nEsta ação não pode ser desfeita!",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel",
+        },
+        {
+          text: "Remover Tudo",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await clearAllMedia();
+              Alert.alert("✅ Sucesso", "Todas as mídias foram removidas!");
+              console.log("🗑️ Todas as mídias foram limpas");
+            } catch (error) {
+              console.error("❌ Erro ao limpar mídias:", error);
+              Alert.alert("Erro", "Não foi possível remover as mídias");
+            }
+          },
+        },
+      ]
+    );
   };
 
   // ==================== RENDER ITEM DO FLATLIST ====================
@@ -347,7 +580,7 @@ export function Admin({ navigation }: StackRoutesProps<"admin">) {
   // ==================== EFFECTS ====================
 
   useEffect(() => {
-    handleLoadingDatas(); // Carregar mídias usando o hook
+    handleLoadingDatas();
   }, []);
 
   // ==================== RENDER ====================
@@ -414,14 +647,72 @@ export function Admin({ navigation }: StackRoutesProps<"admin">) {
       <View style={tw`flex-row gap-4 mt-4`}>
         <View style={tw`flex-1`}>
           <Button
-            title={LoadingDownload ? "Carregando..." : "Baixar Dados"}
-            disabled={LoadingDownload}
+            title={LoadingDownload ? "Baixando..." : "📥 Baixar Publicidades"}
+            onPress={openTotemModal}
+            disabled={LoadingDownload || uploadingMedia}
           />
         </View>
-        <Pressable style={tw`justify-center`}>
+        <Pressable
+          onPress={handleClearAllPublicities}
+          style={tw`justify-center bg-red-50 px-4 rounded`}
+        >
           <Trash color="red" size={35} />
         </Pressable>
       </View>
+
+      {/* Modal para digitar código do totem */}
+      <Modal
+        animationType="slide"
+        transparent
+        visible={totemModalVisible}
+        onRequestClose={() => setTotemModalVisible(false)}
+      >
+        <View
+          style={tw`flex-1 justify-center items-center bg-black bg-opacity-50`}
+        >
+          <View style={tw`bg-white rounded-lg p-6 w-11/12 max-w-md`}>
+            <Text style={tw`text-xl font-bold mb-4 text-center`}>
+              🔑 Código do Totem
+            </Text>
+
+            <Text style={tw`text-gray-600 mb-4 text-center`}>
+              Digite o código do totem para baixar as publicidades
+            </Text>
+
+            <TextInput
+              style={tw`border border-gray-300 rounded px-4 py-3 mb-4 text-base`}
+              placeholder="Ex: codigo01"
+              value={totemCode}
+              onChangeText={setTotemCode}
+              autoCapitalize="none"
+              autoFocus
+            />
+
+            <View style={tw`flex-row gap-3`}>
+              <Pressable
+                style={tw`flex-1 bg-gray-200 py-3 rounded`}
+                onPress={() => {
+                  setTotemModalVisible(false);
+                  setTotemCode("");
+                }}
+              >
+                <Text style={tw`text-center font-bold text-gray-700`}>
+                  Cancelar
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={tw`flex-1 bg-purple-600 py-3 rounded`}
+                onPress={confirmDownload}
+              >
+                <Text style={tw`text-center font-bold text-white`}>
+                  Confirmar
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

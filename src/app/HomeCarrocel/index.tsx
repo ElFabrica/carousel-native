@@ -14,56 +14,60 @@ import Icon from "@react-native-vector-icons/fontawesome";
 import Carousel, { ICarouselInstance } from "react-native-reanimated-carousel";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSharedValue } from "react-native-reanimated";
 
 import { StackRoutesProps } from "@/routes/StackRoutes";
 import { styles } from "./styles";
-import { Logo } from "@/components/Logo";
-import { useSharedValue } from "react-native-reanimated";
 import { useMedia, ICarouselMedia } from "@/hooks/use-midia";
+import { EmptyState } from "./EmptyState";
 
-// Componente para renderizar vídeos
+// ==================== CONSTANTES ====================
+const TASKS_KEY = "ActDigital@2024";
+const DEFAULT_IMAGE_DURATION = 7;
+const VIDEO_END_CHECK_INTERVAL = 100;
+
+// ==================== COMPONENTES AUXILIARES ====================
+
+interface VideoCarouselItemProps {
+  uri: string;
+  onVideoEnd: () => void;
+  isActive: boolean;
+  isPaused: boolean;
+}
+
 function VideoCarouselItem({
   uri,
   onVideoEnd,
   isActive,
   isPaused,
-}: {
-  uri: string;
-  onVideoEnd: () => void;
-  isActive: boolean;
-  isPaused: boolean;
-}) {
+}: VideoCarouselItemProps) {
   const { width, height } = Dimensions.get("window");
-
   const player = useVideoPlayer(uri, (player) => {
-    player.loop = false; // Desativa loop para detectar fim
+    player.loop = false;
   });
 
-  // Monitorar quando o vídeo termina
   useEffect(() => {
     if (!player) return;
 
     const interval = setInterval(() => {
-      const status = player.status;
+      const { status, currentTime } = player;
 
-      // Quando o vídeo terminar
-      if (status === "idle" && player.currentTime > 0) {
+      if (status === "idle" && currentTime > 0) {
         onVideoEnd();
         clearInterval(interval);
       }
-    }, 100);
+    }, VIDEO_END_CHECK_INTERVAL);
 
     return () => clearInterval(interval);
   }, [player, onVideoEnd]);
 
-  // Controlar play/pause baseado se está ativo E se a tela está em foco
   useEffect(() => {
     if (isActive && !isPaused) {
       player.play();
     } else {
       player.pause();
       if (!isActive) {
-        player.currentTime = 0; // Resetar vídeo apenas se não estiver ativo
+        player.currentTime = 0;
       }
     }
   }, [isActive, isPaused, player]);
@@ -72,9 +76,9 @@ function VideoCarouselItem({
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
       <VideoView
         player={player}
-        style={{ width: width, height: height }}
+        style={{ width, height }}
         contentFit="contain"
-        allowsFullscreen
+        allowsFullscreen={false}
         allowsPictureInPicture={false}
         nativeControls={false}
       />
@@ -82,39 +86,111 @@ function VideoCarouselItem({
   );
 }
 
+interface ImageCarouselItemProps {
+  uri: string;
+  width: number;
+  height: number;
+}
+
+function ImageCarouselItem({ uri, width, height }: ImageCarouselItemProps) {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <Image
+        source={{ uri }}
+        style={{ width: width * 1, height: height * 1 }}
+        resizeMode="contain"
+      />
+    </View>
+  );
+}
+
+interface LoadingStateProps {}
+
+function LoadingState({}: LoadingStateProps) {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <ActivityIndicator size="large" color="purple" />
+      <Text style={{ marginTop: 10, color: "#666" }}>Carregando mídias...</Text>
+    </View>
+  );
+}
+
+interface AdminModalProps {
+  visible: boolean;
+  password: string;
+  onChangePassword: (text: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+function AdminModal({
+  visible,
+  password,
+  onChangePassword,
+  onCancel,
+  onConfirm,
+}: AdminModalProps) {
+  return (
+    <Modal
+      animationType="slide"
+      transparent
+      visible={visible}
+      onRequestClose={onCancel}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Publicidades</Text>
+
+          <TextInput
+            placeholder="Digite a chave"
+            placeholderTextColor="#888"
+            style={styles.input}
+            secureTextEntry
+            value={password}
+            onChangeText={onChangePassword}
+          />
+
+          <View style={styles.modalButtons}>
+            <Pressable style={styles.cancelButton} onPress={onCancel}>
+              <Text style={styles.modalButtonText}>Cancelar</Text>
+            </Pressable>
+            <Pressable style={styles.confirmButton} onPress={onConfirm}>
+              <Text style={styles.modalButtonText}>Confirmar</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ==================== COMPONENTE PRINCIPAL ====================
+
 export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
   const [tasksModalVisible, setTasksModalVisible] = useState(false);
   const [tasksPassword, setTasksPassword] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
+
   const progress = useSharedValue<number>(0);
-  const ref = useRef<ICarouselInstance>(null);
+  const carouselRef = useRef<ICarouselInstance>(null);
   const autoPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const { width, height } = Dimensions.get("window");
   const { handleLoadingDatas, carouselMedia, loading } = useMedia();
 
-  const TASKS_KEY = "Tasks1234@";
-
-  // Detectar quando a tela está em foco ou não
+  // ==================== FOCUS EFFECT ====================
   useFocusEffect(
     useCallback(() => {
-      // Tela entrou em foco
-      console.log("📱 Tela HomeCarrocel em FOCO - Retomando carrossel");
       setIsScreenFocused(true);
 
-      // Recarregar mídias quando a tela voltar ao foco
-      handleLoadingDatas().then(() => {
-        console.log("🔄 Mídias recarregadas com sucesso!");
+      handleLoadingDatas().catch((error) => {
+        console.error("Erro ao carregar mídias:", error);
       });
 
       return () => {
-        // Tela saiu de foco
-        console.log("📱 Tela HomeCarrocel FORA DE FOCO - Pausando carrossel");
         setIsScreenFocused(false);
 
-        // Limpar timer ao sair da tela
         if (autoPlayTimerRef.current) {
           clearTimeout(autoPlayTimerRef.current);
           autoPlayTimerRef.current = null;
@@ -123,63 +199,55 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
     }, [handleLoadingDatas])
   );
 
-  function acessoTasks() {
-    // Descomente para ativar a validação de senha
-    if (tasksPassword !== TASKS_KEY) {
-      Alert.alert("Código inválido");
+  // ==================== HANDLERS ====================
+  const handleAdminAccess = useCallback(() => {
+    if (TASKS_KEY !== tasksPassword) {
       setTasksPassword("");
+      Alert.alert("Senha inválida", "consulte o admin!");
       return;
     }
     setTasksModalVisible(false);
     navigation.navigate("admin");
     setTasksPassword("");
-  }
+  }, [navigation]);
 
-  const onPressPagination = (index: number) => {
-    ref.current?.scrollTo({
-      count: index - progress.value,
-      animated: true,
-    });
-  };
+  const goToNext = useCallback(() => {
+    if (carouselMedia.length <= 1) return;
 
-  // Avançar para próximo item - CORRIGIDO
-  const goToNext = () => {
-    if (carouselMedia.length === 0) return;
+    const nextIndex = (currentIndex + 1) % carouselMedia.length;
+    carouselRef.current?.scrollTo({ index: nextIndex, animated: true });
+  }, [carouselMedia.length, currentIndex]);
 
-    // Usar next() em vez de scrollTo para navegação mais suave
-    ref.current?.next();
-  };
+  const handleVideoEnd = useCallback(() => {
+    if (carouselMedia.length > 1) {
+      goToNext();
+    }
+  }, [carouselMedia.length, goToNext]);
 
-  // Handler quando vídeo termina
-  const handleVideoEnd = () => {
-    console.log("Vídeo terminou, avançando...");
-    goToNext();
-  };
+  const handleSnapToItem = useCallback((index: number) => {
+    setCurrentIndex(index);
+  }, []);
 
-  // Gerenciar autoplay para imagens - ATUALIZADO para considerar foco da tela
+  const handleModalCancel = useCallback(() => {
+    setTasksModalVisible(false);
+    setTasksPassword("");
+  }, []);
+
+  // ==================== AUTO-PLAY EFFECT ====================
   useEffect(() => {
-    // Limpar timer anterior
     if (autoPlayTimerRef.current) {
       clearTimeout(autoPlayTimerRef.current);
       autoPlayTimerRef.current = null;
     }
 
-    // Só executar se a tela estiver em foco
-    if (!isScreenFocused) {
-      console.log("⏸️ Tela não está em foco, autoplay pausado");
-      return;
-    }
+    if (!isScreenFocused) return;
+    if (carouselMedia.length <= 1) return;
 
     const currentItem = carouselMedia[currentIndex];
 
-    // Se for imagem, usar timer customizado ou padrão de 7 segundos
-    if (currentItem && currentItem.type === "image" && autoPlayEnabled) {
-      const duration = currentItem.duration || 7; // Padrão: 7 segundos
+    if (currentItem?.type === "image") {
+      const duration = currentItem.duration || DEFAULT_IMAGE_DURATION;
       const durationMs = duration * 1000;
-
-      console.log(
-        `▶️ Imagem "${currentItem.fileName}" - Duração: ${duration}s`
-      );
 
       autoPlayTimerRef.current = setTimeout(() => {
         goToNext();
@@ -192,58 +260,41 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
         autoPlayTimerRef.current = null;
       }
     };
-  }, [currentIndex, carouselMedia, autoPlayEnabled, isScreenFocused]);
+  }, [currentIndex, carouselMedia, isScreenFocused, goToNext]);
 
-  // Atualizar índice atual quando carrossel mudar
-  const handleSnapToItem = (index: number) => {
-    setCurrentIndex(index);
-  };
-
+  // ==================== INITIAL LOAD ====================
   useEffect(() => {
     handleLoadingDatas();
-  }, []);
+  }, [handleLoadingDatas]);
 
-  // Função para renderizar cada item do carrossel
-  const renderCarouselItem = ({
-    item,
-    index,
-  }: {
-    item: ICarouselMedia;
-    index: number;
-  }) => {
-    if (item.type === "video") {
-      return (
-        <VideoCarouselItem
-          uri={item.uri}
-          onVideoEnd={handleVideoEnd}
-          isActive={index === currentIndex}
-          isPaused={!isScreenFocused}
-        />
-      );
-    }
+  // ==================== RENDER ITEM ====================
+  const renderCarouselItem = useCallback(
+    ({ item, index }: { item: ICarouselMedia; index: number }) => {
+      if (item.type === "video") {
+        return (
+          <VideoCarouselItem
+            uri={item.uri}
+            onVideoEnd={handleVideoEnd}
+            isActive={index === currentIndex}
+            isPaused={!isScreenFocused}
+          />
+        );
+      }
 
-    // Renderizar imagem
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Image
-          source={{ uri: item.uri }}
-          style={{ width: width * 0.9, height: height * 0.7 }}
-          resizeMode="contain"
-        />
-      </View>
-    );
-  };
+      return <ImageCarouselItem uri={item.uri} width={width} height={height} />;
+    },
+    [currentIndex, isScreenFocused, handleVideoEnd, width, height]
+  );
 
+  // ==================== RENDER ====================
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => setTasksModalVisible(true)}>
           <Icon name="gear" size={24} color="purple" />
         </Pressable>
       </View>
 
-      {/* Conteúdo principal - CARROSSEL */}
       <View
         style={{
           flex: 1,
@@ -253,125 +304,53 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
         }}
       >
         {loading ? (
-          // Estado de carregamento
-          <View
-            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-          >
-            <ActivityIndicator size="large" color="purple" />
-            <Text style={{ marginTop: 10, color: "#666" }}>
-              Carregando mídias...
-            </Text>
-          </View>
+          <LoadingState />
         ) : carouselMedia.length === 0 ? (
-          // Estado vazio - sem mídias
-          <View
-            style={{
-              flex: 1,
-              justifyContent: "center",
-              alignItems: "center",
-              padding: 20,
-            }}
-          >
-            <Icon name="image" size={64} color="#ccc" />
-            <Text
-              style={{
-                marginTop: 20,
-                fontSize: 18,
-                color: "#666",
-                textAlign: "center",
-              }}
-            >
-              Nenhuma mídia disponível
-            </Text>
-            <Text
-              style={{
-                marginTop: 10,
-                fontSize: 14,
-                color: "#999",
-                textAlign: "center",
-              }}
-            >
-              Adicione fotos ou vídeos na tela de administração
-            </Text>
-            <Pressable
-              onPress={() => setTasksModalVisible(true)}
-              style={{
-                marginTop: 20,
-                backgroundColor: "purple",
-                paddingHorizontal: 30,
-                paddingVertical: 15,
-                borderRadius: 8,
-              }}
-            >
-              <Text
-                style={{ color: "white", fontWeight: "bold", fontSize: 16 }}
-              >
-                Ir para Admin
-              </Text>
-            </Pressable>
-          </View>
+          <EmptyState onAdminPress={() => setTasksModalVisible(true)} />
         ) : (
-          // CARROSSEL COM MÍDIAS
           <View style={{ flex: 1, width: "100%", justifyContent: "center" }}>
-            <Carousel
-              loop
-              ref={ref}
-              width={width}
-              height={height * 0.85}
-              autoPlay={false} // Desativado - controle manual
-              data={carouselMedia}
-              onProgressChange={progress}
-              onSnapToItem={handleSnapToItem}
-              style={{ width: "100%", height: "100%" }}
-              renderItem={renderCarouselItem}
-              // Configurações adicionais para transição suave
-              mode="parallax"
-              modeConfig={{
-                parallaxScrollingScale: 1,
-                parallaxScrollingOffset: 0,
-              }}
-            />
+            {carouselMedia.length === 1 ? (
+              // Renderizar item único sem carrossel
+              <View
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                {renderCarouselItem({ item: carouselMedia[0], index: 0 })}
+              </View>
+            ) : (
+              // Renderizar carrossel normal
+              <Carousel
+                loop
+                ref={carouselRef}
+                width={width}
+                height={height * 0.85}
+                autoPlay={false}
+                data={carouselMedia}
+                onProgressChange={progress}
+                onSnapToItem={handleSnapToItem}
+                style={{ width: "100%", height: "100%" }}
+                renderItem={renderCarouselItem}
+                mode="parallax"
+                modeConfig={{
+                  parallaxScrollingScale: 1,
+                  parallaxScrollingOffset: 0,
+                }}
+              />
+            )}
           </View>
         )}
       </View>
 
-      {/* Modal Tasks/Admin */}
-      <Modal
-        animationType="slide"
-        transparent
+      <AdminModal
         visible={tasksModalVisible}
-        onRequestClose={() => setTasksModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Publicidades</Text>
-
-            <TextInput
-              placeholder="Digite a chave"
-              placeholderTextColor="#888"
-              style={styles.input}
-              secureTextEntry
-              value={tasksPassword}
-              onChangeText={setTasksPassword}
-            />
-
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={() => {
-                  setTasksModalVisible(false);
-                  setTasksPassword("");
-                }}
-              >
-                <Text style={styles.modalButtonText}>Cancelar</Text>
-              </Pressable>
-              <Pressable style={styles.confirmButton} onPress={acessoTasks}>
-                <Text style={styles.modalButtonText}>Confirmar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        password={tasksPassword}
+        onChangePassword={setTasksPassword}
+        onCancel={handleModalCancel}
+        onConfirm={handleAdminAccess}
+      />
     </View>
   );
 }
