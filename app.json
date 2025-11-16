@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "appTotem",
-    "slug": "appTotem",
+    "name": "App-Carrocel",
+    "slug": "App-Carrocel",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,14 +21,11 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.elfabrica.appTotem"
+      "package": "com.elfabrica.App-Carrocel"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      "expo-sqlite",
-      "expo-asset"
-    ]
+    "plugins": ["expo-sqlite", "expo-asset", "expo-video"]
   }
 }
