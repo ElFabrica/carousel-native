@@ -22,7 +22,7 @@ import { useMedia, ICarouselMedia } from "@/hooks/use-midia";
 import { EmptyState } from "./EmptyState";
 
 // ==================== CONSTANTES ====================
-const TASKS_KEY = "ActDigital@2024";
+const TASKS_KEY = "Act@2024";
 const DEFAULT_IMAGE_DURATION = 7;
 const VIDEO_END_CHECK_INTERVAL = 100;
 
@@ -200,7 +200,7 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
   );
 
   // ==================== HANDLERS ====================
-  const handleAdminAccess = useCallback(() => {
+  function handleAdminAccess() {
     if (TASKS_KEY !== tasksPassword) {
       setTasksPassword("");
       Alert.alert("Senha inválida", "consulte o admin!");
@@ -209,7 +209,7 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
     setTasksModalVisible(false);
     navigation.navigate("admin");
     setTasksPassword("");
-  }, [navigation]);
+  }
 
   const goToNext = useCallback(() => {
     if (carouselMedia.length <= 1) return;
