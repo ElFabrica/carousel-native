@@ -21,11 +21,20 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.elfabrica.App-Carrocel"
+      "package": "com.elfabrica.AppCarrocel"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-sqlite", "expo-asset", "expo-video"]
+    "plugins": [
+      "expo-sqlite",
+      "expo-asset",
+      "expo-video"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1661bdbc-3dd8-4a2c-a474-284dbb1cb9f5"
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { Admin } from "@/app/Admin/Admin";
-import { HomeCarrocel } from "@/app/HomeCarrocel/index";
+import { HomeCarrocelComponent } from "@/app/HomeCarrocel/index";
 
 export type StackRoutesList = {
   homeCarrocel: undefined;
@@ -23,7 +23,7 @@ export function StacksRoutes() {
       }}
     >
       <Stack.Screen name="admin" component={Admin} />
-      <Stack.Screen name="homeCarrocel" component={HomeCarrocel} />
+      <Stack.Screen name="homeCarrocel" component={HomeCarrocelComponent} />
     </Stack.Navigator>
   );
 }

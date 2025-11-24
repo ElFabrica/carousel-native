@@ -4,7 +4,6 @@ import {
   Pressable,
   Modal,
   TextInput,
-  Alert,
   Dimensions,
   Image,
   ActivityIndicator,
@@ -19,10 +18,8 @@ import { useSharedValue } from "react-native-reanimated";
 import { StackRoutesProps } from "@/routes/StackRoutes";
 import { styles } from "./styles";
 import { useMedia, ICarouselMedia } from "@/hooks/use-midia";
-import { EmptyState } from "./EmptyState";
 
 // ==================== CONSTANTES ====================
-const TASKS_KEY = "Act@2024";
 const DEFAULT_IMAGE_DURATION = 7;
 const VIDEO_END_CHECK_INTERVAL = 100;
 
@@ -33,6 +30,7 @@ interface VideoCarouselItemProps {
   onVideoEnd: () => void;
   isActive: boolean;
   isPaused: boolean;
+  shouldLoop?: boolean;
 }
 
 function VideoCarouselItem({
@@ -40,14 +38,15 @@ function VideoCarouselItem({
   onVideoEnd,
   isActive,
   isPaused,
+  shouldLoop = false,
 }: VideoCarouselItemProps) {
   const { width, height } = Dimensions.get("window");
   const player = useVideoPlayer(uri, (player) => {
-    player.loop = false;
+    player.loop = shouldLoop;
   });
 
   useEffect(() => {
-    if (!player) return;
+    if (!player || shouldLoop) return;
 
     const interval = setInterval(() => {
       const { status, currentTime } = player;
@@ -59,7 +58,7 @@ function VideoCarouselItem({
     }, VIDEO_END_CHECK_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [player, onVideoEnd]);
+  }, [player, onVideoEnd, shouldLoop]);
 
   useEffect(() => {
     if (isActive && !isPaused) {
@@ -97,9 +96,62 @@ function ImageCarouselItem({ uri, width, height }: ImageCarouselItemProps) {
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
       <Image
         source={{ uri }}
-        style={{ width: width * 1, height: height * 1 }}
+        style={{ width: width * 0.9, height: height * 0.7 }}
         resizeMode="contain"
       />
+    </View>
+  );
+}
+
+interface EmptyStateProps {
+  onAdminPress: () => void;
+}
+
+function EmptyState({ onAdminPress }: EmptyStateProps) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+      }}
+    >
+      <Icon name="image" size={64} color="#ccc" />
+      <Text
+        style={{
+          marginTop: 20,
+          fontSize: 18,
+          color: "#666",
+          textAlign: "center",
+        }}
+      >
+        Nenhuma mídia disponível
+      </Text>
+      <Text
+        style={{
+          marginTop: 10,
+          fontSize: 14,
+          color: "#999",
+          textAlign: "center",
+        }}
+      >
+        Adicione fotos ou vídeos na tela de administração
+      </Text>
+      <Pressable
+        onPress={onAdminPress}
+        style={{
+          marginTop: 20,
+          backgroundColor: "purple",
+          paddingHorizontal: 30,
+          paddingVertical: 15,
+          borderRadius: 8,
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "bold", fontSize: 16 }}>
+          Ir para Admin
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -166,7 +218,9 @@ function AdminModal({
 
 // ==================== COMPONENTE PRINCIPAL ====================
 
-export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
+export function HomeCarrocelComponent({
+  navigation,
+}: StackRoutesProps<"homeCarrocel">) {
   const [tasksModalVisible, setTasksModalVisible] = useState(false);
   const [tasksPassword, setTasksPassword] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -200,16 +254,16 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
   );
 
   // ==================== HANDLERS ====================
-  function handleAdminAccess() {
-    if (TASKS_KEY !== tasksPassword) {
-      setTasksPassword("");
-      Alert.alert("Senha inválida", "consulte o admin!");
+  const handleAdminAccess = useCallback(() => {
+    if (!navigation) {
+      console.error("Navigation prop is undefined");
       return;
     }
+
     setTasksModalVisible(false);
     navigation.navigate("admin");
     setTasksPassword("");
-  }
+  }, [navigation]);
 
   const goToNext = useCallback(() => {
     if (carouselMedia.length <= 1) return;
@@ -277,40 +331,35 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
             onVideoEnd={handleVideoEnd}
             isActive={index === currentIndex}
             isPaused={!isScreenFocused}
+            shouldLoop={carouselMedia.length === 1}
           />
         );
       }
 
       return <ImageCarouselItem uri={item.uri} width={width} height={height} />;
     },
-    [currentIndex, isScreenFocused, handleVideoEnd, width, height]
+    [
+      currentIndex,
+      isScreenFocused,
+      handleVideoEnd,
+      width,
+      height,
+      carouselMedia.length,
+    ]
   );
 
   // ==================== RENDER ====================
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Pressable onPress={() => setTasksModalVisible(true)}>
-          <Icon name="gear" size={24} color="purple" />
-        </Pressable>
-      </View>
-
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          width: "100%",
-        }}
-      >
+      {/* Carrossel em absolute por trás */}
+      <View style={styles.carouselContainer}>
         {loading ? (
           <LoadingState />
         ) : carouselMedia.length === 0 ? (
           <EmptyState onAdminPress={() => setTasksModalVisible(true)} />
         ) : (
-          <View style={{ flex: 1, width: "100%", justifyContent: "center" }}>
+          <>
             {carouselMedia.length === 1 ? (
-              // Renderizar item único sem carrossel
               <View
                 style={{
                   flex: 1,
@@ -321,12 +370,11 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
                 {renderCarouselItem({ item: carouselMedia[0], index: 0 })}
               </View>
             ) : (
-              // Renderizar carrossel normal
               <Carousel
                 loop
                 ref={carouselRef}
                 width={width}
-                height={height * 0.85}
+                height={height}
                 autoPlay={false}
                 data={carouselMedia}
                 onProgressChange={progress}
@@ -340,8 +388,15 @@ export function HomeCarrocel({ navigation }: StackRoutesProps<"homeCarrocel">) {
                 }}
               />
             )}
-          </View>
+          </>
         )}
+      </View>
+
+      {/* Header por cima do carrossel */}
+      <View style={styles.header}>
+        <Pressable onPress={() => setTasksModalVisible(true)}>
+          <Icon name="gear" size={24} color="purple" />
+        </Pressable>
       </View>
 
       <AdminModal

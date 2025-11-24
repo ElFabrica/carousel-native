@@ -1,4 +1,4 @@
-package com.elfabrica.appTotem
+package com.elfabrica.AppCarrocel
 
 import android.app.Application
 import android.content.res.Configuration

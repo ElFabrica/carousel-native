@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.elfabrica.appTotem'
+    namespace 'com.elfabrica.AppCarrocel'
     defaultConfig {
-        applicationId 'com.elfabrica.appTotem'
+        applicationId 'com.elfabrica.AppCarrocel'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
