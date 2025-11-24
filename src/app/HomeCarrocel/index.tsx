@@ -96,7 +96,7 @@ function ImageCarouselItem({ uri, width, height }: ImageCarouselItemProps) {
     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
       <Image
         source={{ uri }}
-        style={{ width: width * 0.9, height: height * 0.7 }}
+        style={{ width: width, height: height }}
         resizeMode="contain"
       />
     </View>
